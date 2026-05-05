@@ -1,0 +1,37 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+
+# Zero images in git — build-blocking
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.avif
+*.svg
+*.ico
+*.bmp
+*.tiff
+*.tif
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+.cache/

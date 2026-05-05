@@ -1,0 +1,43 @@
+{
+  "name": "the-faith-wound",
+  "version": "1.0.0",
+  "description": "Religious Trauma / Faith Deconstruction / Life After Leaving — The Faith Wound",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently \"vite\" \"tsx watch server/index.ts\"",
+    "build": "vite build && node scripts/build-server.mjs",
+    "start": "NODE_ENV=production node scripts/start-with-cron.mjs",
+    "seed": "node scripts/bulk-seed.mjs",
+    "visual-qa": "node scripts/visual-qa.mjs",
+    "audit-quality": "node scripts/audit-quality.mjs"
+  },
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "openai": "^4.52.7",
+    "pg": "^8.12.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-helmet-async": "^3.0.0",
+    "react-router-dom": "^6.24.1",
+    "serve-static": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.5",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/pg": "^8.11.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.23.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  }
+}
