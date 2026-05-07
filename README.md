@@ -1,35 +1,29 @@
-# The Faith Wound — Site 108
+# The Faith Wound
 
 **Religious Trauma Recovery & Faith Deconstruction Resource Hub**
 
-A full-stack, SSR-capable React + Express site built for the "The Faith Wound" niche — religious trauma, faith deconstruction, purity culture recovery, and post-faith identity. Designed to rank, monetize via Amazon Associates, and grow autonomously through AI-powered content generation.
+Live at [religiontrauma.com](https://religiontrauma.com) — a full-stack SSR React + Express site covering religious trauma, faith deconstruction, purity culture recovery, and post-faith identity. Built to rank, monetize via Amazon Associates (`spankyspinola-20`), and grow autonomously through AI-powered content generation.
 
 ---
 
 ## Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
+1. [Architecture](#architecture)
 2. [Tech Stack](#tech-stack)
 3. [Project Structure](#project-structure)
 4. [Getting Started (Local)](#getting-started-local)
 5. [Environment Variables](#environment-variables)
-6. [Database Setup (PostgreSQL)](#database-setup-postgresql)
-7. [Seeding Articles](#seeding-articles)
-8. [DigitalOcean Deployment](#digitalocean-deployment)
-9. [Bunny CDN Setup](#bunny-cdn-setup)
-10. [Pushing to GitHub](#pushing-to-github)
-11. [Cron Jobs & Automation](#cron-jobs--automation)
-12. [Content Architecture](#content-architecture)
-13. [Assessments](#assessments)
-14. [SEO & AEO Stack](#seo--aeo-stack)
-15. [Amazon Affiliate System](#amazon-affiliate-system)
-16. [Design System](#design-system)
-17. [Adding Articles Manually](#adding-articles-manually)
-18. [Troubleshooting](#troubleshooting)
+6. [DigitalOcean Deployment](#digitalocean-deployment)
+7. [Cron Jobs & Automation](#cron-jobs--automation)
+8. [Content Architecture](#content-architecture)
+9. [Assessments](#assessments)
+10. [SEO & AEO Stack](#seo--aeo-stack)
+11. [Amazon Affiliate System](#amazon-affiliate-system)
+12. [Design System](#design-system)
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
 Browser ──► DigitalOcean App Platform
@@ -42,14 +36,16 @@ Browser ──► DigitalOcean App Platform
       API Routes  SSR Renderer
          │         │
          ▼         ▼
-      PostgreSQL  Vite/React
-      (DO Managed)  (react-router-dom v6)
+      JSON Files  Vite/React
+  (src/data/articles/)  (react-router-dom v6)
               │
          Bunny CDN
-         (images/assets)
+   (religion-trauma.b-cdn.net)
 ```
 
-The server handles both the REST API (`/api/*`) and SSR rendering for all page routes. In production, Vite builds the client bundle and the SSR entry, which Express uses to render full HTML with injected head tags (via `react-helmet-async`) for SEO.
+**No external database.** Articles are stored as JSON files in `src/data/articles/`. The server reads them directly at runtime. This means zero database setup, zero migrations, and instant deploys.
+
+**Images are hardcoded to Bunny CDN** (`https://religion-trauma.b-cdn.net`). No image env vars needed.
 
 ---
 
@@ -60,13 +56,13 @@ The server handles both the REST API (`/api/*`) and SSR rendering for all page r
 | Frontend | React 18, React Router v6, TypeScript |
 | SSR | Vite SSR + `renderToString` + `react-helmet-async` |
 | Backend | Express 4, Node.js 20+ |
-| Database | PostgreSQL 15 (DigitalOcean Managed) |
+| Data Store | JSON files (`src/data/articles/*.json`) |
 | Styling | Pure CSS with design tokens (no Tailwind) |
-| AI Writing | OpenAI-compatible API (gpt-4.1-mini / DeepSeek) |
-| CDN | Bunny CDN (images, assets) |
+| AI Writing | OpenAI API (`gpt-4.1-mini`) |
+| CDN | Bunny CDN — `religion-trauma.b-cdn.net` (hardcoded) |
 | Hosting | DigitalOcean App Platform |
 | Cron | `node-cron` (runs in same process) |
-| Affiliate | Amazon Associates (auto-matched by category) |
+| Affiliate | Amazon Associates — `tag=spankyspinola-20` (hardcoded) |
 
 ---
 
@@ -80,11 +76,10 @@ the-faith-wound/
 │   ├── client/                   # Vite client bundle
 │   └── index.js                  # Compiled Express server
 ├── public/
-│   ├── images/                   # Static images (hero, articles, author)
 │   └── favicon.svg
 ├── scripts/
 │   ├── build-server.mjs          # esbuild server compiler
-│   ├── seed.mjs                  # Database seed script
+│   ├── seed.mjs                  # Article validator / seed helper
 │   └── start-with-cron.mjs       # Production entry point
 ├── server/
 │   ├── index.ts                  # Express app + SSR setup
@@ -92,66 +87,37 @@ the-faith-wound/
 │       ├── articles.ts           # GET /api/articles, GET /api/articles/:slug
 │       ├── assessments.ts        # GET/POST /api/assessments
 │       ├── health.ts             # GET /health
-│       ├── llms.ts               # GET /llms.txt, /llms-full.txt
+│       ├── llms.ts               # GET /llms.txt, /llms-full.txt, /ai.txt
 │       ├── robots.ts             # GET /robots.txt
-│       └── sitemap.ts            # GET /sitemap.xml
+│       └── sitemap.ts            # GET /sitemap.xml (with image tags)
 ├── src/
 │   ├── client/
 │   │   ├── components/           # Shared UI components
-│   │   │   ├── ArticleCard.tsx
-│   │   │   ├── AuthorByline.tsx
-│   │   │   ├── AutoAffiliates.tsx
-│   │   │   ├── Breadcrumbs.tsx
-│   │   │   ├── DashboardLayout.tsx
-│   │   │   ├── Footer.tsx
-│   │   │   ├── MobileHeader.tsx
-│   │   │   ├── ReadingProgress.tsx
-│   │   │   ├── SEOHead.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   └── TLDR.tsx
-│   │   ├── pages/
-│   │   │   ├── assessments/      # 3 interactive assessments
-│   │   │   ├── AboutPage.tsx
-│   │   │   ├── ArticlePage.tsx
-│   │   │   ├── ArticlesPage.tsx
-│   │   │   ├── AssessmentPage.tsx
-│   │   │   ├── AssessmentsPage.tsx
-│   │   │   ├── CategoryPage.tsx
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── NotFoundPage.tsx
-│   │   │   ├── PrivacyPage.tsx
-│   │   │   └── ToolsPage.tsx
-│   │   ├── styles/
-│   │   │   ├── tokens.css        # Design tokens + global styles
-│   │   │   └── assessments.css   # Assessment-specific styles
-│   │   ├── App.tsx               # Router config
+│   │   ├── pages/                # Route-level page components
+│   │   │   └── assessments/      # 9 interactive assessments
+│   │   ├── styles/               # CSS design tokens + assessment styles
+│   │   ├── App.tsx               # Router setup
 │   │   ├── entry-client.tsx      # Client hydration entry
 │   │   └── entry-server.tsx      # SSR render entry
 │   ├── cron/
-│   │   ├── asin-health-check.mjs
-│   │   ├── generate-article.mjs
-│   │   ├── product-spotlight.mjs
-│   │   ├── refresh-monthly.mjs
-│   │   └── refresh-quarterly.mjs
+│   │   ├── generate-article.mjs  # Daily article generation (5/day → 1/weekday)
+│   │   ├── product-spotlight.mjs # Weekly product spotlight
+│   │   ├── refresh-monthly.mjs   # Monthly content refresh
+│   │   ├── refresh-quarterly.mjs # Quarterly deep refresh
+│   │   └── asin-health-check.mjs # Weekly ASIN validation
 │   ├── data/
-│   │   ├── asin-pool.json        # Amazon ASIN pool by category
-│   │   ├── product-catalog.ts    # Curated book/resource catalog
-│   │   ├── seed-articles.ts      # Articles 1–10
-│   │   ├── seed-articles-2.ts    # Articles 11–20
-│   │   └── seed-articles-3.ts    # Articles 21–30
-│   ├── lib/
-│   │   ├── aeo.mjs               # AEO helpers, robots.txt, llms.txt
-│   │   ├── amazon-verify.mjs     # ASIN verification
-│   │   ├── article-quality-gate.mjs  # Quality scoring
-│   │   ├── articleJsonLd.mjs     # JSON-LD schema builders
-│   │   ├── bunny.mjs             # Bunny CDN upload helper
-│   │   ├── db.mjs                # PostgreSQL pool + query helpers
-│   │   ├── deepseek-generate.mjs # AI article writing engine
-│   │   └── match-products.mjs    # Affiliate product matching
-│   └── types/
-│       └── mjs.d.ts              # TypeScript declarations for .mjs modules
-├── .env.example                  # All required environment variables
-├── .gitignore
+│   │   ├── articles/             # 500 pre-generated JSON articles
+│   │   ├── seed-articles.ts      # Seed article TypeScript definitions
+│   │   ├── product-catalog.ts    # Amazon ASIN catalog
+│   │   └── verified-asins.json   # Verified ASIN pool
+│   └── lib/
+│       ├── aeo.mjs               # SEO/AEO helpers, llms.txt, ai.txt
+│       ├── amazon-verify.mjs     # ASIN verification
+│       ├── article-quality-gate.mjs # Content quality checks
+│       ├── bunny.mjs             # Bunny CDN upload + image mapping
+│       ├── db.mjs                # JSON file DB layer
+│       ├── deepseek-generate.mjs # OpenAI writing engine
+│       └── match-products.mjs    # Category → ASIN matching
 ├── index.html                    # Vite HTML template
 ├── package.json
 ├── tsconfig.json
@@ -162,423 +128,157 @@ the-faith-wound/
 
 ## Getting Started (Local)
 
-### Prerequisites
-
-- Node.js 20+
-- pnpm (`npm install -g pnpm`)
-- PostgreSQL 15 (local or remote)
-
-### Installation
-
 ```bash
-git clone <your-repo-url> the-faith-wound
-cd the-faith-wound
+git clone https://github.com/peacefulgeek/religion-trauma.git
+cd religion-trauma
 pnpm install
 cp .env.example .env
-# Edit .env with your values
-```
-
-### Development
-
-```bash
+# Edit .env — add your OPENAI_API_KEY
 pnpm dev
 ```
 
-This runs Vite (port 5173) and the Express server (port 3000) concurrently. The server proxies Vite in development mode.
-
-### Production Build
-
-```bash
-pnpm build
-pnpm start
-```
+Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in all values:
+Only **two variables** are required. Everything else is hardcoded in the source.
 
 ```env
-# Server
+# Required
+OPENAI_API_KEY=sk-...          # For daily article generation cron
+AUTO_GEN_ENABLED=true          # Set to true to enable cron
+
+# Optional (defaults work fine)
 NODE_ENV=production
 PORT=3000
-
-# Database (PostgreSQL)
-DATABASE_URL=postgresql://user:password@host:5432/dbname
-
-# AI Writing Engine
-OPENAI_API_KEY=your_openai_or_deepseek_key
-OPENAI_BASE_URL=https://api.openai.com/v1   # or DeepSeek endpoint
-AI_MODEL=gpt-4.1-mini                        # or deepseek-chat
-
-# Amazon Associates
-AMAZON_ASSOCIATE_TAG=thefaithwound-20
-
-# Bunny CDN (add when ready)
-BUNNY_API_KEY=
-BUNNY_STORAGE_ZONE=
-BUNNY_CDN_URL=
-
-# Site
-SITE_URL=https://thefaithwound.com
+SITE_URL=https://religiontrauma.com
 ```
 
----
-
-## Database Setup (PostgreSQL)
-
-The database schema is auto-created on first run if it doesn't exist. The `db.mjs` module runs `CREATE TABLE IF NOT EXISTS` on startup.
-
-**Tables created automatically:**
-- `articles` — all article content, metadata, SEO fields
-- `assessments` — assessment definitions
-- `assessment_responses` — anonymous quiz responses
-
-**For DigitalOcean Managed PostgreSQL:**
-
-1. Create a Managed PostgreSQL cluster in DigitalOcean
-2. Copy the connection string from the dashboard
-3. Set `DATABASE_URL` in your App Platform environment variables
-
----
-
-## Seeding Articles
-
-After the database is set up and `DATABASE_URL` is configured:
-
-```bash
-pnpm seed
-```
-
-This inserts all 30 seed articles from `src/data/seed-articles*.ts` into the database. The seed script is idempotent — it uses `ON CONFLICT (slug) DO NOTHING` so it is safe to run multiple times.
+**What is hardcoded (no env vars needed):**
+- Bunny CDN: `https://religion-trauma.b-cdn.net` — in `src/lib/bunny.mjs`
+- Amazon tag: `spankyspinola-20` — in `src/data/product-catalog.ts`
+- OpenAI base URL: `https://api.openai.com/v1` — in `src/lib/deepseek-generate.mjs`
+- OpenAI model: `gpt-4.1-mini` — in `src/lib/deepseek-generate.mjs`
 
 ---
 
 ## DigitalOcean Deployment
 
-The project includes a pre-configured `.do/app.yaml` for DigitalOcean App Platform.
+The `.do/app.yaml` is pre-configured. To deploy:
 
-### Steps
+1. Go to [DigitalOcean App Platform](https://cloud.digitalocean.com/apps)
+2. Click **Create App** → **GitHub** → select `peacefulgeek/religion-trauma`
+3. Branch: `main` — auto-deploy on push: enabled
+4. Set the one required secret: `OPENAI_API_KEY`
+5. Set `AUTO_GEN_ENABLED=true`
+6. Click **Deploy**
 
-1. **Push to GitHub** (see [Pushing to GitHub](#pushing-to-github))
+The app will:
+- Run `pnpm install && pnpm build` on each deploy
+- Start with `node scripts/start-with-cron.mjs`
+- Serve on port 3000
+- Auto-redirect `www.religiontrauma.com` → `religiontrauma.com`
 
-2. **Create App on DigitalOcean:**
-   - Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps)
-   - Click "Create App"
-   - Connect your GitHub repo
-   - DigitalOcean will detect the `.do/app.yaml` automatically
-
-3. **Set Environment Variables** in the App Platform dashboard:
-   - `DATABASE_URL` — your Managed PostgreSQL connection string
-   - `OPENAI_API_KEY` — for the AI writing engine
-   - `AMAZON_ASSOCIATE_TAG` — your Associates tag
-   - `SITE_URL` — your domain (e.g., `https://thefaithwound.com`)
-
-4. **Deploy** — DigitalOcean will run `pnpm build` and then `pnpm start`
-
-5. **Run seed** — After first deploy, open the App Console and run:
-   ```bash
-   node scripts/seed.mjs
-   ```
-
-### Custom Domain
-
-Add your domain in the App Platform "Domains" tab. DigitalOcean handles SSL automatically.
-
----
-
-## Bunny CDN Setup
-
-Bunny CDN integration is ready but requires configuration. Once you have your Bunny account:
-
-1. Create a Storage Zone (e.g., `thefaithwound`)
-2. Create a Pull Zone connected to the storage zone
-3. Set environment variables:
-   ```env
-   BUNNY_API_KEY=your_bunny_api_key
-   BUNNY_STORAGE_ZONE=thefaithwound
-   BUNNY_CDN_URL=https://thefaithwound.b-cdn.net
-   ```
-
-The `src/lib/bunny.mjs` module handles uploads. When `BUNNY_CDN_URL` is set, the AI article generator will automatically upload hero images to Bunny and store the CDN URL in the `hero_url` column.
-
-**Static images** in `public/images/` are served directly from the Node.js server until Bunny is configured. To migrate them to Bunny, upload the files and update the `BUNNY_CDN_URL` env var — the site will serve them from CDN automatically.
-
----
-
-## Pushing to GitHub
-
-When you're ready to push to your own GitHub repo:
-
-```bash
-cd the-faith-wound
-
-# Add your remote (replace with your repo URL)
-git remote add origin https://github.com/yourusername/the-faith-wound.git
-
-# Push
-git push -u origin main
-```
-
-The project is already committed with a clean initial commit. Just add the remote and push.
+**No database to provision.** Articles are served from the 500 JSON files included in the repo.
 
 ---
 
 ## Cron Jobs & Automation
 
-All cron jobs run inside the same Node.js process via `node-cron`. They are initialized in `scripts/start-with-cron.mjs`.
+All crons run in-process via `node-cron`:
 
 | Job | Schedule | Description |
 |---|---|---|
-| `generate-article` | Daily at 6 AM | Generates one new article using AI, runs quality gate, inserts to DB |
-| `product-spotlight` | Weekly (Mon 9 AM) | Refreshes product spotlight widgets |
-| `refresh-monthly` | 1st of month | Refreshes top 10 articles (adds new sections, updates stats) |
-| `refresh-quarterly` | 1st of quarter | Deep refresh of all articles older than 90 days |
-| `asin-health-check` | Weekly (Sun midnight) | Verifies affiliate ASINs are still valid |
+| Article generation | Phase 1: 5/day (40 days) → Phase 2: 1/weekday | Generates new articles via OpenAI |
+| Product spotlight | Weekly (Monday 9am) | Highlights a featured product |
+| Monthly refresh | 1st of month | Refreshes top 10 articles |
+| Quarterly refresh | Every 3 months | Deep refresh of all articles |
+| ASIN health check | Weekly (Sunday midnight) | Validates Amazon affiliate links |
 
-**To disable a cron job**, comment out its import in `scripts/start-with-cron.mjs`.
-
-**To trigger manually** (for testing):
-
-```bash
-node -e "import('./src/cron/generate-article.mjs').then(m => m.generateArticle())"
-```
+The cron automatically detects which phase it's in based on the number of published articles:
+- **< 200 articles published:** runs 5 times per day
+- **≥ 200 articles published:** runs once per weekday
 
 ---
 
 ## Content Architecture
 
-### Categories
+**500 pre-generated articles** covering:
+- Religious Trauma Syndrome (RTS)
+- Faith deconstruction stages
+- Purity culture recovery
+- Leaving high-control groups
+- Body healing & somatic work
+- Scrupulosity / religious OCD
+- LGBTQ+ and religious trauma
+- Secular community building
+- Post-faith identity
+- Grief, anger, and relationships
 
-| Slug | Label |
-|---|---|
-| `religious-trauma` | Religious Trauma |
-| `deconstruction` | Deconstruction |
-| `purity-culture` | Purity Culture |
-| `leaving-church` | Leaving Church |
-| `high-control-groups` | High-Control Groups |
-| `relationships` | Relationships |
-| `body-healing` | Body & Healing |
-| `ocd-scrupulosity` | OCD & Scrupulosity |
-| `trauma-healing` | Trauma Recovery |
-| `therapy` | Finding Help |
-| `grief` | Grief & Loss |
-| `secular-community` | Secular Community |
-| `secular-spirituality` | Secular Spirituality |
-| `atheism-agnosticism` | Atheism & Agnosticism |
-| `parenting` | Parenting After Faith |
-| `anger` | Anger & Forgiveness |
-| `identity` | Identity |
-| `resources` | Resources |
+**Date-gating:**
+- Articles 1–200: publish May 8 → June 16, 2026 (5/day)
+- Articles 201–500: publish June 17, 2026 → August 10, 2027 (1/weekday)
 
-### Article Schema (PostgreSQL)
-
-```sql
-articles (
-  id              SERIAL PRIMARY KEY,
-  slug            TEXT UNIQUE NOT NULL,
-  title           TEXT NOT NULL,
-  meta_description TEXT,
-  og_title        TEXT,
-  og_description  TEXT,
-  category        TEXT NOT NULL,
-  tags            TEXT[],
-  hero_url        TEXT,
-  image_alt       TEXT,
-  reading_time    INTEGER,
-  author          TEXT DEFAULT 'The Oracle Lover',
-  body            TEXT NOT NULL,       -- Markdown
-  tldr            TEXT,                -- 2-3 sentence summary
-  faq             JSONB,               -- [{question, answer}]
-  cta_primary     TEXT,
-  affiliate_asins TEXT[],
-  published_at    TIMESTAMPTZ,
-  updated_at      TIMESTAMPTZ,
-  last_refreshed_at TIMESTAMPTZ,
-  is_published    BOOLEAN DEFAULT true,
-  quality_score   INTEGER
-)
-```
+**Voice:** The Oracle Lover — warm, wise, fiercely compassionate. Direct, validating, intellectually rigorous.
 
 ---
 
 ## Assessments
 
-Three interactive assessments are built into the site:
+9 interactive assessments at `/assessments`:
 
-### 1. Religious Trauma Assessment
-- **20 questions**, Likert scale (0–4)
-- Scoring: 5 levels (Minimal / Mild / Moderate / Significant / Severe)
-- Based on frameworks from Dr. Marlene Winell and the Religious Trauma Institute
-- Route: `/assessments/religious-trauma-assessment`
-
-### 2. Deconstruction Stage Finder
-- **15 questions**, multiple choice
-- Maps to 6 deconstruction stages (Questioning → Integration)
-- Route: `/assessments/deconstruction-stage-finder`
-
-### 3. Post-Faith Identity Quiz
-- **12 questions**, multiple choice
-- Maps to 5 identity profiles (Secular Humanist, Spiritual-Not-Religious, Agnostic Explorer, etc.)
-- Route: `/assessments/post-faith-identity-quiz`
-
-All assessments are **client-side only** (no data stored unless user submits via the API). Results include recommended articles, next steps, and resource links.
+1. Religious Trauma Assessment (20 questions, 5 severity levels)
+2. Deconstruction Stage Finder (15 questions, 6 stages)
+3. Post-Faith Identity Quiz (12 questions, 5 profiles)
+4. Spiritual Abuse Indicator (15 questions)
+5. Purity Culture Impact Scale (18 questions)
+6. Faith Grief Inventory (12 questions)
+7. Secular Readiness Assessment (10 questions)
+8. Body-Faith Connection Quiz (14 questions)
+9. Community Needs Assessment (10 questions)
 
 ---
 
 ## SEO & AEO Stack
 
-### Per-Page Meta (react-helmet-async)
-Every page injects via `<SEOHead>`:
-- `<title>` with site suffix
-- `<meta name="description">`
-- `<meta property="og:*">` (Open Graph)
-- `<meta name="twitter:*">` (Twitter Cards)
-- `<link rel="canonical">`
-- `<script type="application/ld+json">` (JSON-LD)
-
-### JSON-LD Schemas
-- `Article` — on every article page
-- `FAQPage` — on articles with FAQ sections
-- `BreadcrumbList` — on article and category pages
-- `WebSite` — on homepage
-- `Organization` — sitewide
-
-### Crawler Files
-| URL | Purpose |
-|---|---|
-| `/sitemap.xml` | All published articles + static pages |
-| `/robots.txt` | Allows major AI crawlers, blocks `/api/` |
-| `/llms.txt` | AI-readable article index (Markdown) |
-| `/llms-full.txt` | Full article text for AI indexing |
-
-### AEO (Answer Engine Optimization)
-- TLDR blocks (AI Overview targets)
-- FAQ sections with `FAQPage` schema
-- `speakable` CSS selectors in JSON-LD
-- Structured headers (H1 → H2 → H3 hierarchy)
+- **SSR** via Vite + `react-helmet-async` — full HTML for every page
+- **JSON-LD** on every article: `Article`, `FAQPage`, `BreadcrumbList`, `WebSite`
+- **Sitemap** at `/sitemap.xml` with `<image:image>` tags
+- **TLDR blocks** targeting Google AI Overview snippets
+- **FAQ sections** on every article (JSON-LD `FAQPage` schema)
+- **`/robots.txt`** — all AI crawlers explicitly allowed
+- **`/llms.txt`** — LLM-readable site summary
+- **`/llms-full.txt`** — full article index for LLM training
+- **`/ai.txt`** — AI permissions file
+- **Breadcrumbs** on all article pages
+- **Twitter Cards** and Open Graph on all pages
+- **Canonical URLs** on all pages
 
 ---
 
 ## Amazon Affiliate System
 
-### ASIN Pool
-`src/data/asin-pool.json` contains curated ASINs organized by category. The AI writing engine automatically selects relevant ASINs when generating articles.
+Tag: `spankyspinola-20` (hardcoded in `src/data/product-catalog.ts`)
 
-### Associate Tag
-Set `AMAZON_ASSOCIATE_TAG` in your environment. All affiliate links are built as:
-```
-https://www.amazon.com/dp/{ASIN}?tag={AMAZON_ASSOCIATE_TAG}
-```
+Products are auto-matched to articles by category. The `AutoAffiliates` component renders 2–3 relevant product cards on each article page.
 
-### Auto-Matching
-`src/lib/match-products.mjs` matches articles to relevant products based on:
-- Article category
-- Article tags
-- Keyword matching in title/body
-
-### ASIN Health Check
-The weekly cron job verifies ASINs are still valid by checking Amazon product pages. Invalid ASINs are flagged in the database.
+**Supplements page** at `/supplements` lists 200+ herbs, TCM remedies, and supplements with verified ASINs — all linked with the affiliate tag.
 
 ---
 
 ## Design System
 
-The site uses a custom CSS design token system (no Tailwind, no CSS-in-JS framework).
+Dashboard Archetype E — warm editorial design:
 
-### Color Palette (Warm Earth Tones)
+| Token | Value |
+|---|---|
+| Primary | `#7A6040` (amber-brown) |
+| Background | `#FDFAF6` (warm cream) |
+| Text | `#1A1208` (near-black) |
+| Accent | `#C4973A` (gold) |
+| Heading font | Playfair Display |
+| Body font | Inter |
 
-```css
---color-accent:     #7A6040  /* Warm brown — primary */
---color-accent-light: #C4956A
---color-heading:    #1A1208
---color-text:       #2C2010
---color-muted:      #6B5A45
---color-bg:         #FDFAF6  /* Warm off-white */
---color-card:       #FFFFFF
---color-sidebar:    #F5F0E8
---color-border:     #E8DDD0
-```
-
-### Typography
-
-- **Headings:** Playfair Display (serif) — loaded from Google Fonts
-- **Body:** Inter (sans-serif) — loaded from Google Fonts
-- **Scale:** 12px → 14px → 16px → 18px → 20px → 24px → 30px → 36px → 48px
-
-### Layout
-
-- **Dashboard Archetype E:** Sidebar (280px) + Main content
-- **Sidebar:** Author bio, navigation, popular articles, recent articles, assessment CTA
-- **Content max-width:** 720px
-- **Full layout max-width:** 1200px
-
----
-
-## Adding Articles Manually
-
-To add an article directly to the database:
-
-```sql
-INSERT INTO articles (
-  slug, title, meta_description, category, tags,
-  hero_url, image_alt, reading_time, body, tldr, faq,
-  published_at, is_published
-) VALUES (
-  'your-article-slug',
-  'Your Article Title',
-  'A 150-character meta description.',
-  'religious-trauma',
-  ARRAY['tag1', 'tag2'],
-  '/images/article-hero.jpg',
-  'Alt text for the hero image',
-  8,
-  '## Introduction\n\nYour article body in Markdown...',
-  'A 2-3 sentence summary of the article.',
-  '[{"question": "Q1?", "answer": "A1."}, {"question": "Q2?", "answer": "A2."}]',
-  NOW(),
-  true
-);
-```
-
-Or add to `src/data/seed-articles.ts` and re-run `pnpm seed`.
-
----
-
-## Troubleshooting
-
-### Build fails with TypeScript errors
-Run `npx tsc --noEmit` to see all errors. The most common issues are:
-- Missing `React` import in `.tsx` files (add `import React from 'react'`)
-- Type mismatches in `.mjs` imports (these are declared in `src/types/mjs.d.ts`)
-
-### Database connection fails
-- Verify `DATABASE_URL` is set correctly
-- Check that the PostgreSQL instance allows connections from your IP/app
-- For DigitalOcean Managed PostgreSQL, ensure the app is in the same region or has a trusted source added
-
-### Articles not showing on homepage
-- Run `pnpm seed` to insert the seed articles
-- Check that `is_published = true` in the database
-- Verify the `/api/articles` endpoint returns data: `curl http://localhost:3000/api/articles`
-
-### Images not loading
-- Static images are served from `public/images/`
-- In production, ensure the `public/` directory is included in the build output
-- If using Bunny CDN, verify `BUNNY_CDN_URL` is set and the files are uploaded
-
-### Cron jobs not running
-- Cron jobs only run in production (`NODE_ENV=production`)
-- Check the server logs for cron initialization messages
-- Verify `OPENAI_API_KEY` is set for the article generation cron
-
----
-
-## License
-
-Proprietary. All rights reserved. Not for redistribution.
-
----
-
-*Built with care for everyone navigating the hardest kind of loss.*
+Layout: fixed sidebar (280px) + main content column. Fully responsive with mobile hamburger menu and reading progress bar.

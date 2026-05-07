@@ -101,9 +101,9 @@ async function runGeneration() {
 
   const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    baseURL: 'https://api.openai.com/v1',
   });
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const model = 'gpt-4.1-mini';
 
   // Find next unused topic
   const existingSlugs = await getPublishedSlugs();

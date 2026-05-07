@@ -36,19 +36,3 @@ services:
         value: "true"
       - key: OPENAI_API_KEY
         type: SECRET
-      - key: OPENAI_BASE_URL
-        value: https://api.deepseek.com
-      - key: OPENAI_MODEL
-        value: deepseek-chat
-      - key: AMAZON_TAG
-        value: spankyspinola-20
-      - key: BUNNY_API_KEY
-        type: SECRET
-      - key: BUNNY_STORAGE_ZONE
-        value: religion-trauma
-      - key: BUNNY_STORAGE_HOST
-        value: ny.storage.bunnycdn.com
-      - key: BUNNY_CDN_URL
-        value: https://religion-trauma.b-cdn.net
-      - key: GH_PAT
-        type: SECRET
