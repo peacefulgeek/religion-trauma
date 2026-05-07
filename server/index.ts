@@ -16,12 +16,16 @@ const isDev = process.env.NODE_ENV !== 'production';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 async function createServer() {
+  // Initialize JSON data layer first
+  const { initSchema } = await import('../src/lib/db.mjs' as any);
+  await initSchema();
+
   const app = express();
 
   // Trust proxy (DigitalOcean App Platform)
   app.set('trust proxy', 1);
 
-  // WWW → non-www 301 redirect (runs first)
+  // ── WWW → apex 301 redirect — MUST be first middleware ────────────────────
   app.use((req, res, next) => {
     const host = (req.headers.host || '').toLowerCase();
     if (host.startsWith('www.')) {
@@ -38,7 +42,7 @@ async function createServer() {
   // Parse JSON
   app.use(express.json());
 
-  // Cache-control headers for AI crawlers
+  // Cache headers for article pages (helps CDN and AI crawlers)
   app.use('/articles', (req, res, next) => {
     res.setHeader('Cache-Control', 'public, max-age=3600');
     next();

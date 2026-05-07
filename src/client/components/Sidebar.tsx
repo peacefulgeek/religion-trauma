@@ -59,6 +59,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
     { href: '/', label: 'Home', icon: '⌂' },
     { href: '/articles', label: 'All Articles', icon: '◈' },
     { href: '/assessments', label: 'Assessments', icon: '◉' },
+    { href: '/supplements', label: 'Supplements', icon: '◇' },
     { href: '/tools', label: 'Recommended', icon: '◆' },
     { href: '/about', label: 'About', icon: '◎' },
   ];
@@ -86,13 +87,14 @@ export function Sidebar({ isOpen, onClose }: Props) {
       {/* Author Bio */}
       <div className="sidebar-author">
         <div className="author-avatar">
-          <div className="author-avatar-placeholder">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <circle cx="20" cy="20" r="20" fill="var(--color-accent)" opacity="0.15"/>
-              <circle cx="20" cy="15" r="7" fill="var(--color-accent)" opacity="0.6"/>
-              <path d="M6 36 C6 28 13 22 20 22 C27 22 34 28 34 36" fill="var(--color-accent)" opacity="0.4"/>
-            </svg>
-          </div>
+          <img
+            src="https://religion-trauma.b-cdn.net/author-avatar.webp"
+            alt="The Oracle Lover"
+            className="author-avatar-img"
+            loading="lazy"
+            width="56"
+            height="56"
+          />
         </div>
         <div className="author-info">
           <h3 className="author-name">The Oracle Lover</h3>
@@ -249,16 +251,13 @@ export function Sidebar({ isOpen, onClose }: Props) {
           margin-bottom: var(--space-3);
         }
 
-        .author-avatar-placeholder {
+        .author-avatar-img {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          overflow: hidden;
+          object-fit: cover;
           border: 2px solid var(--color-accent);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-bg);
+          display: block;
         }
 
         .author-name {

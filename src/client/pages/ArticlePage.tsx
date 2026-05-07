@@ -215,7 +215,7 @@ export function ArticlePage() {
         description={article.og_description || article.meta_description}
         ogTitle={article.og_title || article.title}
         ogDescription={article.og_description || article.meta_description}
-        ogImage={article.hero_url || '/images/hero-main.jpg'}
+        ogImage={article.hero_url || 'https://religion-trauma.b-cdn.net/hero-main.webp'}
         ogType="article"
         canonicalUrl={`/articles/${article.slug}`}
         publishedAt={article.published_at}

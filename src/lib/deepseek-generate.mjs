@@ -5,7 +5,7 @@ const client = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || 'https://api.deepseek.com',
 });
 
-const MODEL = process.env.OPENAI_MODEL || 'deepseek-chat';
+const MODEL = process.env.OPENAI_MODEL || 'deepseek-v4-pro';
 
 const BANNED_WORDS = [
   'profound','transformative','holistic','nuanced','multifaceted','delve','tapestry',

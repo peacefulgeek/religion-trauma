@@ -19,8 +19,10 @@ interface SEOHeadProps {
 }
 
 const SITE_NAME = 'The Faith Wound';
-const SITE_URL = process.env.SITE_URL || 'https://thefaithwound.com';
-const DEFAULT_OG_IMAGE = '/images/hero-main.jpg';
+const SITE_URL = process.env.SITE_URL || 'https://religiontrauma.com';
+export const CDN_BASE = 'https://religion-trauma.b-cdn.net';
+const DEFAULT_OG_IMAGE = `${CDN_BASE}/images/hero-main.webp`;
+const LOGO_URL = `${CDN_BASE}/images/hero-main.webp`;
 const DEFAULT_DESCRIPTION = 'Evidence-informed resources for religious trauma recovery, faith deconstruction, and post-faith identity. You are not alone. Healing is possible.';
 
 export default function SEOHead({
@@ -54,7 +56,7 @@ export default function SEOHead({
     '@type': 'Organization',
     name: SITE_NAME,
     url: SITE_URL,
-    logo: `${SITE_URL}/images/logo.png`,
+    logo: LOGO_URL,
     description: DEFAULT_DESCRIPTION,
     sameAs: [],
   });
@@ -120,7 +122,7 @@ export default function SEOHead({
         url: SITE_URL,
         logo: {
           '@type': 'ImageObject',
-          url: `${SITE_URL}/images/logo.png`,
+          url: LOGO_URL,
         },
       },
       mainEntityOfPage: {

@@ -51,7 +51,7 @@ const HOME_JSON_LD = {
   '@type': 'WebPage',
   name: 'The Faith Wound — Religious Trauma Recovery & Faith Deconstruction',
   description: 'Evidence-informed resources for religious trauma recovery, faith deconstruction, and post-faith identity. You are not alone. Healing is possible.',
-  url: 'https://thefaithwound.com',
+  url: 'https://religiontrauma.com',
   speakable: {
     '@type': 'SpeakableSpecification',
     cssSelector: ['.hero-title', '.hero-subtitle'],
@@ -79,7 +79,7 @@ export function HomePage() {
         description="Evidence-informed resources for religious trauma recovery, faith deconstruction, and post-faith identity. 30+ research-backed articles, 3 free assessments. You are not alone."
         ogType="website"
         canonicalUrl="/"
-        ogImage="/images/hero-main.jpg"
+        ogImage="https://religion-trauma.b-cdn.net/hero-main.webp"
         jsonLd={HOME_JSON_LD}
         keywords={['religious trauma recovery', 'faith deconstruction resources', 'religious trauma syndrome', 'leaving religion help', 'spiritual abuse recovery']}
       />
@@ -122,7 +122,7 @@ export function HomePage() {
         <div className="hero-visual">
           <div className="hero-image-frame">
             <img
-              src="/images/hero-main.jpg"
+              src="https://religion-trauma.b-cdn.net/hero-main.webp"
               alt="A person standing on a mountain at golden hour with arms outstretched, symbolizing liberation and the journey of faith deconstruction"
               className="hero-img"
               loading="eager"
@@ -221,7 +221,7 @@ export function HomePage() {
         <div className="oracle-banner-content">
           <div className="oracle-avatar-wrap">
             <img
-              src="/images/author-avatar.jpg"
+              src="https://religion-trauma.b-cdn.net/author-avatar.webp"
               alt="The Oracle Lover — author and researcher specializing in religious trauma recovery"
               className="oracle-avatar-img"
               loading="lazy"

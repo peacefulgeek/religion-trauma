@@ -1,142 +1,235 @@
-import pg from 'pg';
+/**
+ * JSON File Database — zero external dependencies.
+ * All data lives in data/articles.json and data/assessments.json
+ * on the server filesystem. No Postgres. No MySQL. No TiDB.
+ *
+ * Thread-safety note: Node.js is single-threaded, so synchronous
+ * reads + atomic writes are safe for this workload.
+ */
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const { Pool } = pg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
 
-let pool;
+// Data directory: <project-root>/data/
+const DATA_DIR = join(__dirname, '..', '..', 'data');
 
-function getPool() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
-    pool.on('error', (err) => {
-      console.error('[db] Unexpected pool error:', err);
-    });
-  }
-  return pool;
+function ensureDataDir() {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 }
 
-export async function query(text, params) {
-  const start = Date.now();
+// ─── Generic JSON helpers ─────────────────────────────────────────────────────
+
+function readJSON(file) {
+  ensureDataDir();
+  const path = join(DATA_DIR, file);
+  if (!existsSync(path)) return [];
   try {
-    const res = await getPool().query(text, params);
-    const duration = Date.now() - start;
-    if (duration > 1000) {
-      console.warn(`[db] Slow query (${duration}ms):`, text.slice(0, 80));
-    }
-    return res;
-  } catch (err) {
-    console.error('[db] Query error:', err.message, '\nQuery:', text.slice(0, 120));
-    throw err;
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return [];
   }
 }
+
+function writeJSON(file, data) {
+  ensureDataDir();
+  const path = join(DATA_DIR, file);
+  writeFileSync(path, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// ─── Schema init (no-op for JSON — just ensures files exist) ─────────────────
 
 export async function initSchema() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS articles (
-      id              SERIAL PRIMARY KEY,
-      slug            TEXT UNIQUE NOT NULL,
-      title           TEXT NOT NULL,
-      meta_description TEXT,
-      og_title        TEXT,
-      og_description  TEXT,
-      category        TEXT NOT NULL DEFAULT 'general',
-      tags            TEXT[] DEFAULT '{}',
-      body            TEXT NOT NULL,
-      tldr            TEXT,
-      hero_url        TEXT,
-      image_alt       TEXT,
-      reading_time    INT DEFAULT 5,
-      author          TEXT DEFAULT 'The Oracle Lover',
-      cta_primary     TEXT,
-      faq             JSONB DEFAULT '[]',
-      status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','queued','published')),
-      published_at    TIMESTAMPTZ,
-      queued_at       TIMESTAMPTZ,
-      last_refreshed_at TIMESTAMPTZ,
-      asins_used      TEXT[] DEFAULT '{}',
-      word_count      INT DEFAULT 0,
-      opener_type     TEXT,
-      conclusion_type TEXT,
-      created_at      TIMESTAMPTZ DEFAULT NOW(),
-      updated_at      TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
+  ensureDataDir();
+  if (!existsSync(join(DATA_DIR, 'articles.json'))) {
+    writeJSON('articles.json', []);
+  }
+  if (!existsSync(join(DATA_DIR, 'assessments.json'))) {
+    writeJSON('assessments.json', []);
+  }
+  console.log('[db] JSON data layer ready — data dir:', DATA_DIR);
+}
 
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
-    CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
-    CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug);
-  `);
+// ─── Article helpers ──────────────────────────────────────────────────────────
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS assessments (
-      id          SERIAL PRIMARY KEY,
-      slug        TEXT UNIQUE NOT NULL,
-      title       TEXT NOT NULL,
-      description TEXT,
-      questions   JSONB NOT NULL DEFAULT '[]',
-      results     JSONB NOT NULL DEFAULT '[]',
-      status      TEXT DEFAULT 'published',
-      created_at  TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
+function nextId(arr) {
+  return arr.length === 0 ? 1 : Math.max(...arr.map(a => a.id || 0)) + 1;
+}
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS assessment_responses (
-      id            SERIAL PRIMARY KEY,
-      assessment_id INT REFERENCES assessments(id),
-      answers       JSONB NOT NULL,
-      result_key    TEXT,
-      created_at    TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
+export async function upsertArticle(article) {
+  const articles = readJSON('articles.json');
+  const today = new Date().toISOString().slice(0, 10);
+  const existing = articles.findIndex(a => a.slug === article.slug);
 
-  console.log('[db] Schema initialized');
+  if (existing >= 0) {
+    articles[existing] = {
+      ...articles[existing],
+      ...article,
+      updated_at: new Date().toISOString(),
+      dateModified: today,
+    };
+  } else {
+    articles.push({
+      id: nextId(articles),
+      ...article,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      dateModified: today,
+    });
+  }
+  writeJSON('articles.json', articles);
+  return article.slug;
 }
 
 export async function getPublishedArticles({ limit = 20, offset = 0, category } = {}) {
-  let q = `SELECT id, slug, title, meta_description, category, tags, hero_url, image_alt, reading_time, author, published_at, word_count
-           FROM articles WHERE status = 'published'`;
-  const params = [];
+  const today = new Date().toISOString().slice(0, 10);
+  let articles = readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .sort((a, b) => new Date(b.published_at || b.publishedAt || 0) - new Date(a.published_at || a.publishedAt || 0));
+
   if (category) {
-    params.push(category);
-    q += ` AND category = $${params.length}`;
+    articles = articles.filter(a => a.category === category);
   }
-  q += ` ORDER BY published_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-  params.push(limit, offset);
-  return query(q, params);
+  return { rows: articles.slice(offset, offset + limit) };
 }
 
 export async function getArticleBySlug(slug) {
-  return query(`SELECT * FROM articles WHERE slug = $1 AND status = 'published'`, [slug]);
+  const today = new Date().toISOString().slice(0, 10);
+  const articles = readJSON('articles.json');
+  const article = articles.find(
+    a => a.slug === slug &&
+         a.status === 'published' &&
+         (!a.publishedAt || a.publishedAt <= today)
+  );
+  return { rows: article ? [article] : [] };
 }
 
 export async function getCategories() {
-  return query(`
-    SELECT category, COUNT(*) as count
-    FROM articles WHERE status = 'published'
-    GROUP BY category ORDER BY count DESC
-  `);
+  const today = new Date().toISOString().slice(0, 10);
+  const articles = readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today);
+
+  const counts = {};
+  for (const a of articles) {
+    counts[a.category] = (counts[a.category] || 0) + 1;
+  }
+  return {
+    rows: Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, count]) => ({ category, count }))
+  };
 }
 
 export async function getPopularArticles(limit = 5) {
-  return query(`
-    SELECT id, slug, title, hero_url, reading_time, published_at
-    FROM articles WHERE status = 'published'
-    ORDER BY published_at DESC LIMIT $1
-  `, [limit]);
+  const today = new Date().toISOString().slice(0, 10);
+  const articles = readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .sort((a, b) => (b.view_count || 0) - (a.view_count || 0))
+    .slice(0, limit);
+  return { rows: articles };
 }
 
 export async function getRecentArticles(limit = 5) {
-  return query(`
-    SELECT id, slug, title, hero_url, reading_time, published_at
-    FROM articles WHERE status = 'published'
-    ORDER BY published_at DESC LIMIT $1
-  `, [limit]);
+  const today = new Date().toISOString().slice(0, 10);
+  const articles = readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .sort((a, b) => new Date(b.published_at || b.publishedAt || 0) - new Date(a.published_at || a.publishedAt || 0))
+    .slice(0, limit);
+  return { rows: articles };
+}
+
+export async function getAllArticlesForSitemap() {
+  const today = new Date().toISOString().slice(0, 10);
+  return readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .map(a => ({
+      slug: a.slug,
+      updated_at: a.updated_at || a.published_at,
+      hero_url: a.hero_url,
+      image_alt: a.image_alt || a.title,
+    }));
+}
+
+export async function getTotalArticleCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  return readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .length;
+}
+
+export async function getQueuedArticles(limit = 1) {
+  const today = new Date().toISOString().slice(0, 10);
+  return readJSON('articles.json')
+    .filter(a => a.status === 'queued' || (a.status === 'published' && a.publishedAt > today))
+    .sort((a, b) => new Date(a.publishedAt || a.published_at) - new Date(b.publishedAt || b.published_at))
+    .slice(0, limit);
+}
+
+export async function getArticlesForRefresh(olderThanDays = 30, limit = 25) {
+  const cutoff = new Date(Date.now() - olderThanDays * 86400000).toISOString();
+  const today = new Date().toISOString().slice(0, 10);
+  return readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .filter(a => !a.last_refreshed_at || a.last_refreshed_at < cutoff)
+    .sort((a, b) => new Date(a.published_at || 0) - new Date(b.published_at || 0))
+    .slice(0, limit);
+}
+
+export async function updateArticleBody(slug, body) {
+  const articles = readJSON('articles.json');
+  const today = new Date().toISOString().slice(0, 10);
+  const idx = articles.findIndex(a => a.slug === slug);
+  if (idx >= 0) {
+    articles[idx].body = body;
+    articles[idx].last_refreshed_at = new Date().toISOString();
+    articles[idx].updated_at = new Date().toISOString();
+    articles[idx].dateModified = today;
+    writeJSON('articles.json', articles);
+  }
+}
+
+export async function getPublishedSlugs() {
+  const today = new Date().toISOString().slice(0, 10);
+  return readJSON('articles.json')
+    .filter(a => a.status === 'published')
+    .filter(a => !a.publishedAt || a.publishedAt <= today)
+    .map(a => a.slug);
+}
+
+// Legacy compat — used by old routes
+export async function query(text, params) {
+  console.warn('[db] Legacy query() called — migrate to named helpers:', text.slice(0, 60));
+  return { rows: [] };
+}
+
+// ─── Assessment helpers ───────────────────────────────────────────────────────
+
+export async function getAssessments() {
+  return { rows: readJSON('assessments.json') };
+}
+
+export async function getAssessmentBySlug(slug) {
+  const assessments = readJSON('assessments.json');
+  const a = assessments.find(a => a.slug === slug);
+  return { rows: a ? [a] : [] };
+}
+
+export async function upsertAssessment(assessment) {
+  const assessments = readJSON('assessments.json');
+  const existing = assessments.findIndex(a => a.slug === assessment.slug);
+  if (existing >= 0) {
+    assessments[existing] = { ...assessments[existing], ...assessment };
+  } else {
+    assessments.push({ id: nextId(assessments), ...assessment });
+  }
+  writeJSON('assessments.json', assessments);
 }

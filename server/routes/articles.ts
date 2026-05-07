@@ -9,15 +9,16 @@ articlesRouter.get('/', async (req, res) => {
     const offset = parseInt(req.query.offset as string || '0');
     const category = req.query.category as string | undefined;
 
-    const [articles, categories] = await Promise.all([
+    const [articles, categories, total] = await Promise.all([
       db.getPublishedArticles({ limit, offset, category }),
       db.getCategories(),
+      db.getTotalArticleCount(),
     ]);
 
     res.json({
       articles: articles.rows,
       categories: categories.rows,
-      pagination: { limit, offset, total: articles.rowCount },
+      pagination: { limit, offset, total },
     });
   } catch (err: any) {
     console.error('[articles] GET / error:', err.message);

@@ -1,156 +1,199 @@
-import { query } from '../lib/db.mjs';
-import { generateArticle } from '../lib/deepseek-generate.mjs';
+/**
+ * Article generation cron — The Faith Wound
+ *
+ * Schedule:
+ *   Phase 1 (days 1-40): 5 articles/day at 6am, 9am, 12pm, 3pm, 6pm UTC
+ *   Phase 2 (day 41+):   1 article/weekday at 9am UTC (Mon-Fri)
+ *
+ * SITE_LAUNCH_DATE env var (ISO date) controls phase boundary.
+ * AUTO_GEN_ENABLED=true required for cron to fire.
+ */
+
+import cron from 'node-cron';
+import { OpenAI } from 'openai';
+import { upsertArticle, getTotalArticleCount, getPublishedSlugs } from '../lib/db.mjs';
 import { runQualityGate } from '../lib/article-quality-gate.mjs';
-import { assignHeroImage } from '../lib/bunny.mjs';
+import crypto from 'crypto';
+import re2 from 're2';
 
-const MAX_ATTEMPTS = 4;
+const LAUNCH_DATE = process.env.SITE_LAUNCH_DATE
+  ? new Date(process.env.SITE_LAUNCH_DATE)
+  : new Date();
 
-// Article topics queue for The Faith Wound
-const ARTICLE_TOPICS = [
-  { title: 'What Is Religious Trauma? The Clinical Definition', category: 'religious-trauma', tags: ['religious-trauma', 'clinical', 'definition', 'marlene-winell'] },
-  { title: "Marlene Winell's Religious Trauma Syndrome: The Symptoms", category: 'religious-trauma', tags: ['religious-trauma', 'symptoms', 'marlene-winell', 'rts'] },
-  { title: 'The Difference Between Religious Trauma and Normal Faith Doubt', category: 'religious-trauma', tags: ['religious-trauma', 'faith-doubt', 'deconstruction'] },
-  { title: 'What Deconstruction Actually Is (And What It Isn\'t)', category: 'deconstruction', tags: ['deconstruction', 'faith', 'leaving-religion'] },
-  { title: 'The Grief of Leaving: What You\'re Actually Mourning', category: 'grief', tags: ['grief', 'leaving-religion', 'loss', 'community'] },
-  { title: 'Religious Trauma and Shame: The Entanglement', category: 'religious-trauma', tags: ['shame', 'religious-trauma', 'healing', 'body'] },
-  { title: 'Purity Culture Wounds: What the Research Shows', category: 'purity-culture', tags: ['purity-culture', 'shame', 'sexuality', 'research'] },
-  { title: 'Leaving Evangelical Christianity: The Specific Challenges', category: 'leaving-church', tags: ['evangelical', 'leaving-church', 'deconstruction', 'identity'] },
-  { title: 'Leaving Catholicism: Confession, Guilt, and Identity', category: 'leaving-church', tags: ['catholicism', 'guilt', 'identity', 'leaving-church'] },
-  { title: 'Leaving High-Control Religious Groups: The Cult Spectrum', category: 'high-control-groups', tags: ['cults', 'high-control', 'leaving-religion', 'recovery'] },
-  { title: 'When Your Family Is Still In: How to Navigate It', category: 'relationships', tags: ['family', 'relationships', 'leaving-religion', 'boundaries'] },
-  { title: 'Religious Trauma and Your Relationship With Your Body', category: 'body-healing', tags: ['body', 'religious-trauma', 'healing', 'somatic'] },
-  { title: 'Sex, Shame, and the Body After Purity Culture', category: 'purity-culture', tags: ['sexuality', 'shame', 'purity-culture', 'body', 'healing'] },
-  { title: 'The Scrupulosity Pattern: OCD and Religious Practice', category: 'ocd-scrupulosity', tags: ['ocd', 'scrupulosity', 'religious-trauma', 'anxiety'] },
-  { title: 'Religious Trauma and PTSD: The Clinical Overlap', category: 'trauma-healing', tags: ['ptsd', 'religious-trauma', 'clinical', 'overlap'] },
-  { title: 'Finding a Therapist Who Understands Religious Trauma', category: 'therapy', tags: ['therapy', 'religious-trauma', 'finding-help', 'treatment'] },
-  { title: 'What Helps in Religious Trauma Recovery: The Evidence', category: 'trauma-healing', tags: ['recovery', 'religious-trauma', 'evidence', 'treatment'] },
-  { title: 'The Anger Stage: What to Do With Rage After Leaving', category: 'anger', tags: ['anger', 'leaving-religion', 'healing', 'stages'] },
-  { title: 'Secular Rituals: What Purpose They Serve and How to Build Them', category: 'secular-community', tags: ['ritual', 'secular', 'meaning', 'community', 'post-faith'] },
-  { title: 'Spirituality Without Religion: What That Actually Looks Like', category: 'secular-spirituality', tags: ['secular-spirituality', 'post-faith', 'meaning', 'practice'] },
-  { title: 'The Deconstruction Community: What It Offers and Its Limits', category: 'deconstruction', tags: ['deconstruction', 'community', 'support', 'limits'] },
-  { title: "Brian McLaren's Approach: Faith After Doubt, Not Faith vs. Doubt", category: 'deconstruction', tags: ['brian-mclaren', 'faith-doubt', 'deconstruction', 'approach'] },
-  { title: 'Atheism, Agnosticism, and the Space Between', category: 'atheism-agnosticism', tags: ['atheism', 'agnosticism', 'post-faith', 'identity'] },
-  { title: 'Raising Children After You\'ve Left: The Hard Questions', category: 'parenting', tags: ['parenting', 'children', 'leaving-religion', 'secular'] },
-  { title: 'The Recovery from Christian Purity Culture', category: 'purity-culture', tags: ['purity-culture', 'christianity', 'recovery', 'healing'] },
-  { title: 'Religious Trauma and Relationships: Who Understands, Who Doesn\'t', category: 'relationships', tags: ['relationships', 'religious-trauma', 'understanding', 'community'] },
-  { title: 'Anger at God After Leaving: What to Do With It', category: 'anger', tags: ['anger', 'god', 'leaving-religion', 'healing', 'spirituality'] },
-  { title: 'Grief Groups for People Leaving Religion: How to Find Them', category: 'grief', tags: ['grief', 'community', 'support-groups', 'leaving-religion'] },
-  { title: 'The Belonging Problem: Rebuilding Community After Faith', category: 'secular-community', tags: ['belonging', 'community', 'post-faith', 'rebuilding'] },
-  { title: 'Integration: Who Are You Now That the Framework Is Gone?', category: 'identity', tags: ['identity', 'integration', 'post-faith', 'self-discovery'] },
-];
+const CDN = 'https://religion-trauma.b-cdn.net';
+const CATEGORY_IMAGES = {
+  'religious-trauma':    `${CDN}/article-rts.webp`,
+  'deconstruction':      `${CDN}/article-deconstruction.webp`,
+  'healing':             `${CDN}/article-healing.webp`,
+  'leaving-church':      `${CDN}/article-community.webp`,
+  'purity-culture':      `${CDN}/article-shame.webp`,
+  'high-control-groups': `${CDN}/article-trust.webp`,
+  'grief':               `${CDN}/article-grief.webp`,
+  'ocd-scrupulosity':    `${CDN}/article-rts.webp`,
+  'body-healing':        `${CDN}/article-somatic.webp`,
+  'somatic-healing':     `${CDN}/article-somatic.webp`,
+  'identity':            `${CDN}/article-identity.webp`,
+  'lgbtq-faith':         `${CDN}/article-lgbtq.webp`,
+  'secular-community':   `${CDN}/article-community.webp`,
+  'secular-spirituality':`${CDN}/article-healing.webp`,
+  'therapy':             `${CDN}/article-therapy.webp`,
+  'sleep':               `${CDN}/article-sleep.webp`,
+};
+
+const SYSTEM_PROMPT = `You are the Oracle Lover — a warm, wise, fiercely compassionate voice for people healing from religious trauma and faith deconstruction.
+
+Voice rules:
+- Warm, intimate, direct — like a trusted friend who has done the work
+- Deeply validating — never minimize pain or rush healing
+- Intellectually rigorous — cite real research, psychology, neuroscience
+- Use "you" and "your" — speak directly to the reader
+- BANNED: "boundaries" (say "limits"), "toxic" (say "harmful"), "empower/empowerment", "journey" (say "path" or "process"), "healing journey", "safe space", "trauma-informed" (say "trauma-aware"), "self-care" (say "self-tending"), "unpack", "dive deep", "game-changer", "transformative", "holistic", "authentic self"
+
+Structure:
+1. Opening hook — scene, question, or bold statement (NO H1)
+2. ## TLDR — 3-4 bullet points
+3. Main body — 6-8 ## sections, each 200-300 words
+4. At least 2 inline citations [Author, Year]
+5. ## Frequently Asked Questions — 5 Q&As using **1. Question?** format
+6. Compassionate closing paragraph
+
+Minimum 1800 words. Write in Markdown.`;
+
+function getDaysSinceLaunch() {
+  const now = new Date();
+  return Math.floor((now.getTime() - LAUNCH_DATE.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function isPhase1() {
+  return getDaysSinceLaunch() < 40;
+}
 
 function slugify(title) {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
+  return title.toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 80);
 }
 
-async function storeAsPublished(article) {
-  const faq = Array.isArray(article.faq) ? article.faq : [];
-  await query(
-    `INSERT INTO articles (
-      slug, title, meta_description, og_title, og_description,
-      category, tags, body, tldr, hero_url, image_alt,
-      reading_time, author, cta_primary, faq, status,
-      published_at, word_count, opener_type, conclusion_type
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'published',NOW(),$16,$17,$18)
-    ON CONFLICT (slug) DO UPDATE SET
-      body = EXCLUDED.body,
-      status = 'published',
-      published_at = COALESCE(articles.published_at, NOW()),
-      updated_at = NOW()`,
-    [
-      article.slug,
-      article.title,
-      article.metaDescription || article.meta_description,
-      article.ogTitle || article.og_title || article.title,
-      article.ogDescription || article.og_description || article.metaDescription,
-      article.category,
-      article.tags || [],
-      article.body,
-      article.tldr || '',
-      article.hero_url || article.heroUrl || null,
-      article.imageAlt || article.image_alt || article.title,
-      article.readingTime || article.reading_time || 7,
-      'The Oracle Lover',
-      article.ctaPrimary || article.cta_primary || null,
-      JSON.stringify(faq),
-      article.wordCount || article.word_count || 0,
-      article.openerType || article.opener_type || null,
-      article.conclusionType || article.conclusion_type || null,
-    ]
-  );
+function extractTldr(body) {
+  const m = body.match(/## TLDR\n([\s\S]*?)(?=\n##|$)/);
+  if (!m) return [];
+  return (m[1].match(/^[-*•]\s+(.+)$/gm) || []).map(l => l.replace(/^[-*•]\s+/, '')).slice(0, 4);
 }
 
-export async function generateOrReleaseArticle({ allowedPhase }) {
-  // 1. Phase guard
-  const { rows: [{ count }] } = await query(
-    `SELECT count(*)::int FROM articles WHERE status = 'published'`
-  );
-  const currentPhase = count < 60 ? 1 : 2;
-  if (currentPhase !== allowedPhase) return { skipped: true, currentPhase, allowedPhase };
+function extractFaqs(body) {
+  const m = body.match(/(?:## )?Frequently Asked Questions([\s\S]*?)(?=\n##|$)/);
+  if (!m) return [];
+  const faqText = m[1];
+  const pairs = [...faqText.matchAll(/\*\*\d+\.\s+(.+?)\*\*\s*\n+([\s\S]*?)(?=\n\*\*\d+\.|\n##|$)/g)];
+  if (pairs.length) return pairs.slice(0, 5).map(p => ({ q: p[1].trim(), a: p[2].trim() }));
+  const pairs2 = [...faqText.matchAll(/###\s+(.+?)\n([\s\S]*?)(?=\n###|\n##|$)/g)];
+  return pairs2.slice(0, 5).map(p => ({ q: p[1].trim(), a: p[2].trim() }));
+}
 
-  // 2. Try the queue first
-  const { rows: queued } = await query(
-    `SELECT id, slug, body, category, tags, asins_used, queued_at
-     FROM articles WHERE status = 'queued'
-     ORDER BY queued_at ASC LIMIT 1`
-  );
+// Import topics from the topics file
+import { ARTICLE_TOPICS } from './article-topics.mjs';
 
-  if (queued.length > 0) {
-    const a = queued[0];
-    const gate = runQualityGate(a.body);
-    if (gate.passed) {
-      const heroUrl = await assignHeroImage(a.slug);
-      await query(
-        `UPDATE articles SET status='published', published_at=NOW(), hero_url=$2 WHERE id=$1`,
-        [a.id, heroUrl]
-      );
-      return { released: true, slug: a.slug };
-    } else {
-      console.warn(`[publish] queued article ${a.slug} failed gate; regenerating`);
-    }
+async function runGeneration() {
+  if (process.env.AUTO_GEN_ENABLED !== 'true') return;
+
+  const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  });
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+
+  // Find next unused topic
+  const existingSlugs = await getPublishedSlugs();
+  const slugSet = new Set(existingSlugs);
+  const nextTopic = ARTICLE_TOPICS.find(t => !slugSet.has(slugify(t.title)));
+
+  if (!nextTopic) {
+    console.log('[cron] All topics exhausted — no article generated');
+    return;
   }
 
-  // 3. Generate fresh
-  // Find a topic not yet published
-  const { rows: existing } = await query(
-    `SELECT slug FROM articles WHERE status IN ('published', 'queued')`
-  );
-  const existingSlugs = new Set(existing.map(r => r.slug));
-  const available = ARTICLE_TOPICS.filter(t => !existingSlugs.has(slugify(t.title)));
+  const { title, category = 'religious-trauma', tags = [] } = nextTopic;
+  const slug = slugify(title);
+  const today = new Date().toISOString().slice(0, 10);
 
-  if (available.length === 0) {
-    console.log('[publish] All topics published. Generating new topic...');
-    return { skipped: true, reason: 'all-topics-published' };
-  }
+  console.log(`[cron] Generating: "${title}"`);
 
-  const topic = available[Math.floor(Math.random() * available.length)];
-  let article = null;
-  let gate = null;
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  let body = '';
+  let attempts = 0;
+  while (attempts < 4) {
+    attempts++;
     try {
-      article = await generateArticle({ ...topic, attempt });
-      gate = runQualityGate(article.body);
-      if (gate.passed) break;
-      console.warn(`[publish] attempt ${attempt} failed gate:`, gate.failures);
-    } catch (e) {
-      console.error(`[publish] attempt ${attempt} generation error:`, e.message);
+      const res = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `Write a complete article.\n\nTitle: ${title}\nCategory: ${category}\nKeywords: ${tags.join(', ')}\n\nMinimum 1800 words. Follow all voice and structure rules.` },
+        ],
+        temperature: 0.75,
+        max_tokens: 3500,
+      });
+      body = res.choices[0].message.content.trim();
+    } catch (err) {
+      console.error(`[cron] API error attempt ${attempts}:`, err.message);
+      continue;
     }
+
+    const qg = runQualityGate(body, title);
+    if (qg.pass) break;
+    console.warn(`[cron] Quality gate failed (attempt ${attempts}):`, qg.reasons.join(', '));
+    body = '';
   }
 
-  if (!gate || !gate.passed) {
-    console.error('[publish] abandoned after MAX_ATTEMPTS — NOT storing');
-    return { stored: false, reason: 'quality-gate-exhausted', failures: gate?.failures };
+  if (!body) {
+    console.error('[cron] Failed to generate quality article after 4 attempts');
+    return;
   }
 
-  const slug = slugify(article.title || topic.title);
-  const heroUrl = await assignHeroImage(slug);
-  await storeAsPublished({ ...article, slug, hero_url: heroUrl, category: topic.category, tags: topic.tags });
-  return { stored: true, slug };
+  const wordCount = body.split(/\s+/).length;
+  const tldr = extractTldr(body);
+  const faqs = extractFaqs(body);
+  const heroUrl = CATEGORY_IMAGES[category] || `${CDN}/hero-main.webp`;
+  const readingTime = Math.max(1, Math.round(wordCount / 238));
+  const sentences = body.split(/(?<=[.!?])\s+/);
+  const excerpt = sentences.slice(0, 2).join(' ').slice(0, 300);
+
+  const article = {
+    id: crypto.createHash('md5').update(slug).digest('hex').slice(0, 12),
+    slug, title, category, tags, excerpt, hero_url: heroUrl,
+    body, tldr, faqs, reading_time: readingTime, word_count: wordCount,
+    status: 'published', featured: false,
+    pub_date: today, created_at: today, updated_at: today,
+    author: 'The Oracle Lover',
+    author_title: 'Religious Trauma Specialist & Faith Transition Guide',
+  };
+
+  await upsertArticle(article);
+  console.log(`[cron] Published: "${title}" (${wordCount} words)`);
+}
+
+// Phase 1: 5x daily — 6am, 9am, 12pm, 3pm, 6pm UTC
+const phase1Cron = cron.schedule('0 6,9,12,15,18 * * *', async () => {
+  if (!isPhase1()) return;
+  await runGeneration();
+}, { scheduled: false });
+
+// Phase 2: 1x weekday — 9am UTC Mon-Fri
+const phase2Cron = cron.schedule('0 9 * * 1-5', async () => {
+  if (isPhase1()) return;
+  await runGeneration();
+}, { scheduled: false });
+
+export function startArticleCron() {
+  if (process.env.AUTO_GEN_ENABLED !== 'true') {
+    console.log('[cron] AUTO_GEN_ENABLED not set — article cron disabled');
+    return;
+  }
+  phase1Cron.start();
+  phase2Cron.start();
+  const day = getDaysSinceLaunch();
+  const phase = day < 40 ? `Phase 1 (5/day, day ${day}/40)` : 'Phase 2 (1/weekday)';
+  console.log(`[cron] Article cron started — ${phase}`);
 }
