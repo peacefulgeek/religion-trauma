@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: religion-trauma
+    runtime: node
+    repo: https://github.com/peacefulgeek/religion-trauma
+    branch: main
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: NODE_ENV=production node scripts/start-with-cron.mjs
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: SITE_URL
+        value: https://religiontrauma.com
+      - key: AUTO_GEN_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false

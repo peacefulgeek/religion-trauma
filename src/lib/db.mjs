@@ -13,8 +13,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-// Data directory: <project-root>/data/
-const DATA_DIR = join(__dirname, '..', '..', 'data');
+// Data directory: use DATA_DIR env var, or <cwd>/data/
+// This works whether running from project root (dev) or from dist/ (prod)
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
 
 function ensureDataDir() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });

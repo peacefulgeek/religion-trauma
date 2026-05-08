@@ -1,20 +1,29 @@
 import express from 'express';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 
 export const healthRouter = express.Router();
 
-healthRouter.get('/', async (req, res) => {
+healthRouter.get('/', (req, res) => {
   try {
-    // Try DB ping if DATABASE_URL is set
-    if (process.env.DATABASE_URL) {
-      const { query } = await import('../../src/lib/db.mjs');
-      await query('SELECT 1');
+    // Count articles in JSON file DB
+    const articlesDir = join(process.cwd(), 'src', 'data', 'articles');
+    let articleCount = 0;
+    try {
+      articleCount = readdirSync(articlesDir).filter(f => f.endsWith('.json')).length;
+    } catch {
+      // articles dir not accessible in some deploy configs — non-fatal
     }
+
     res.json({
       status: 'ok',
-      site: 'the-faith-wound',
+      site: 'religion-trauma',
+      url: 'https://religiontrauma.com',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      env: process.env.NODE_ENV,
+      uptime: Math.round(process.uptime()),
+      env: process.env.NODE_ENV || 'development',
+      articles: articleCount,
+      db: 'json-files',
     });
   } catch (err: any) {
     res.status(503).json({

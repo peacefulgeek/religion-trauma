@@ -1,7 +1,26 @@
 import { build } from 'esbuild';
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, '..');
+
+// Post-build patch: fix react-router-dom/server bare import that Node ESM can't resolve
+// Note: react-dom/server is fine as-is (it uses package exports correctly)
+function patchImports(filePath) {
+  let content = fs.readFileSync(filePath, 'utf8');
+  // Fix react-router-dom/server → react-router-dom/server.js
+  content = content.replace(
+    /from\s+["']react-router-dom\/server["']/g,
+    'from "react-router-dom/server.js"'
+  );
+  content = content.replace(
+    /import\s+["']react-router-dom\/server["']/g,
+    'import "react-router-dom/server.js"'
+  );
+  fs.writeFileSync(filePath, content);
+}
 
 // Step 1: Build SSR entry (React server render)
 console.log('[build-server] Building SSR entry...');
@@ -25,6 +44,7 @@ await build({
   sourcemap: false,
   logLevel: 'info',
 });
+patchImports('dist/server/entry-server.js');
 console.log('[build-server] dist/server/entry-server.js built');
 
 // Step 2: Build Express server
@@ -43,7 +63,6 @@ await build({
     'compression',
     'serve-static',
     'node-cron',
-    'pg',
     'openai',
     'sharp',
     'nodemailer',
@@ -61,4 +80,5 @@ await build({
   sourcemap: true,
   logLevel: 'info',
 });
+patchImports('dist/index.js');
 console.log('[build-server] dist/index.js built');
