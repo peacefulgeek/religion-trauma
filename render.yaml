@@ -4,7 +4,7 @@ services:
     runtime: node
     repo: https://github.com/peacefulgeek/religion-trauma
     branch: main
-    buildCommand: npm install -g pnpm@10 && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: npm install && npm run build
     startCommand: NODE_ENV=production node scripts/start-with-cron.mjs
     healthCheckPath: /health
     autoDeploy: true
